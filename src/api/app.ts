@@ -13,6 +13,7 @@ import { buildExercisesRouter } from './exercises';
 import { buildDietRouter } from './diet';
 import { buildMoodRouter } from './mood';
 import { buildChatRouter } from './chat';
+import { buildDocsRouter } from './docs';
 
 export function createApp(): Application {
   const app = express();
@@ -32,12 +33,13 @@ export function createApp(): Application {
     app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
   }
 
-  // 全局限流
+  // 全局限流（跳过 docs/ 与 health，避免被自己的文档页拖垮）
   const limiter = rateLimit({
     windowMs: env.RATE_LIMIT_WINDOW_MS,
     max: env.RATE_LIMIT_MAX_REQUESTS,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => req.path.startsWith('/api/docs') || req.path === '/health',
     message: { error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
   });
   app.use('/api/', limiter);
@@ -63,6 +65,7 @@ export function createApp(): Application {
   app.use('/api/diet', buildDietRouter());
   app.use('/api/mood', buildMoodRouter());
   app.use('/api/chat', buildChatRouter());
+  app.use('/api/docs', buildDocsRouter());
 
   // ===== 404 =====
   app.use((req: Request, res: Response) => {
