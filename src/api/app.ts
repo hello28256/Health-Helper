@@ -10,6 +10,7 @@ import { AppError } from '../utils/errors';
 import { buildAuthRouter } from './auth';
 import { buildUsersRouter } from './users';
 import { buildExercisesRouter } from './exercises';
+import { buildDietRouter } from './diet';
 
 export function createApp(): Application {
   const app = express();
@@ -57,6 +58,7 @@ export function createApp(): Application {
   app.use('/api/auth', buildAuthRouter());
   app.use('/api/users', buildUsersRouter());
   app.use('/api/exercises', buildExercisesRouter());
+  app.use('/api/diet', buildDietRouter());
 
   // ===== 404 =====
   app.use((req: Request, res: Response) => {
