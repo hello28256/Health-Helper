@@ -1,10 +1,12 @@
-import { Router, Request, Response } from 'express';
+import path from 'path';
+import express, { Router, Request, Response } from 'express';
 import { openapiSpec } from '../docs/openapi';
 
 /**
  * /api/docs —— 暴露 OpenAPI 3.0 spec（JSON）+ Swagger UI
  *
- * Swagger UI 通过 CDN 加载，无需引入 npm 包。生产环境也可挂自己的 CDN。
+ * Swagger UI 资源从本地 node_modules/swagger-ui-dist 提供（生产构建后从 dist
+ * 同目录），不依赖任何外网 CDN。
  */
 export function buildDocsRouter(): Router {
   const router = Router();
@@ -14,10 +16,14 @@ export function buildDocsRouter(): Router {
     res.json(openapiSpec);
   });
 
-  // Swagger UI 页面（CDN 加载，无需 npm 依赖）
+  // Swagger UI 页面（资源走本地 node_modules）
   router.get('/', (_req: Request, res: Response) => {
     res.set('Content-Type', 'text/html').send(SWAGGER_HTML);
   });
+
+  // 静态资源（CSS + JS）—— 用绝对路径避免 cwd 影响
+  const distPath = path.dirname(require.resolve('swagger-ui-dist/package.json'));
+  router.use('/static', express.static(distPath));
 
   return router;
 }
@@ -27,7 +33,8 @@ const SWAGGER_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8" />
   <title>Health Helper API · Swagger UI</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+  <link rel="stylesheet" href="/api/docs/static/swagger-ui.css" />
+  <link rel="icon" type="image/png" href="/api/docs/static/favicon-32x32.png" sizes="32x32" />
   <style>
     body { margin: 0; }
     .swagger-ui .info { margin: 30px 0; }
@@ -36,7 +43,7 @@ const SWAGGER_HTML = `<!DOCTYPE html>
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="/api/docs/static/swagger-ui-bundle.js"></script>
   <script>
     window.onload = () => {
       window.ui = SwaggerUIBundle({
