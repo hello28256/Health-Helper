@@ -49,6 +49,11 @@ export function createApp(): Application {
     res.json({ status: 'ok', env: env.NODE_ENV, ts: new Date().toISOString() });
   });
 
+  // 根路径重定向到 Swagger UI（避免冷冰的 404）
+  app.get('/', (_req: Request, res: Response) => {
+    res.redirect(302, '/api/docs/');
+  });
+
   // ===== 路由挂载点（后续 task 补充） =====
   app.get('/api', (_req: Request, res: Response) => {
     res.json({

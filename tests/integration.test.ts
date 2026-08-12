@@ -128,6 +128,12 @@ describe('Integration: error paths', () => {
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
+  it('redirects GET / to Swagger UI', async () => {
+    const res = await request(app).get('/');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/api/docs/');
+  });
+
   it('returns structured validation error for bad payload', async () => {
     const { token } = await registerAndLogin();
     const res = await request(app)
