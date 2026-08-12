@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { logger } from '../utils/logger';
 
 // 单例 Prisma client（开发热重载时避免连接数爆炸）
@@ -14,20 +14,16 @@ export const prisma =
     ],
   });
 
-if (env_isDevelopment()) {
+if (process.env.NODE_ENV === 'development') {
   globalForPrisma.prisma = prisma;
 }
 
-function env_isDevelopment(): boolean {
-  return process.env.NODE_ENV === 'development';
-}
-
-prisma.$on('error', (e) => {
-  logger.error('Prisma error', { message: e.message, target: e.target });
+prisma.$on('error' as never, (event: Prisma.LogEvent) => {
+  logger.error('Prisma error', { message: event.message, target: event.target });
 });
 
-prisma.$on('warn', (e) => {
-  logger.warn('Prisma warn', { message: e.message });
+prisma.$on('warn' as never, (event: Prisma.LogEvent) => {
+  logger.warn('Prisma warn', { message: event.message });
 });
 
 export async function disconnectPrisma(): Promise<void> {

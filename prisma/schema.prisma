@@ -152,7 +152,7 @@ model MoodRecord {
   id         String   @id @default(uuid()) @db.Uuid
   userId     String   @map("user_id") @db.Uuid
   mood       String
-  score      SmallInt?
+  score      Int?
   note       String?  @db.Text
   recordedAt DateTime @map("recorded_at") @db.Timestamptz
 

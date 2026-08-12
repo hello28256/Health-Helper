@@ -7,6 +7,8 @@ import rateLimit from 'express-rate-limit';
 import { env, corsOrigins } from '../utils/env';
 import { logger } from '../utils/logger';
 import { AppError } from '../utils/errors';
+import { buildAuthRouter } from './auth';
+import { buildUsersRouter } from './users';
 
 export function createApp(): Application {
   const app = express();
@@ -49,6 +51,10 @@ export function createApp(): Application {
       endpoints: ['/api/auth', '/api/users', '/api/exercises', '/api/steps', '/api/diet', '/api/mood', '/api/chat'],
     });
   });
+
+  // ===== 业务路由 =====
+  app.use('/api/auth', buildAuthRouter());
+  app.use('/api/users', buildUsersRouter());
 
   // ===== 404 =====
   app.use((req: Request, res: Response) => {
