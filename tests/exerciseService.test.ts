@@ -51,7 +51,7 @@ function createPrismaMock() {
       },
     },
     dailyStep: {
-      upsert: async ({ where, create, update }: any) => {
+      upsert: async ({ where, create, update: _update }: any) => {
         const k = `${where.userId_date.userId}|${where.userId_date.date.toISOString().slice(0, 10)}`;
         const existing = dailySteps.get(k);
         if (existing) {

@@ -113,7 +113,7 @@ describe('Integration: error paths', () => {
   });
 
   it('rejects malformed JSON body with 400', async () => {
-    const { token } = await registerAndLogin();
+    await registerAndLogin();
     const res = await request(app)
       .post('/api/auth/register')
       .set('Content-Type', 'application/json')

@@ -147,8 +147,6 @@ export class StepService {
       throw new ValidationError('steps must be non-negative', { steps: input.steps });
     }
 
-    const dateKey = toDateKey(input.date);
-
     // 先看当前值，取较大者（业务策略：避免回退）
     const existing = await this.prisma.dailyStep.findUnique({
       where: { userId_date: { userId: input.userId, date: input.date } },

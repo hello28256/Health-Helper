@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 防止多个并发 run 互相干扰；同一个 PR 后续 push 会取消旧的 run
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: lint + typecheck + test
+    runs-on: ubuntu-latest
+
+    # 集成测试需要真实 Postgres；用 service container 提供
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: health_helper
+          POSTGRES_PASSWORD: health_helper
+          POSTGRES_DB: health_helper_test
+        ports:
+          - 5432:5432
+        # 健康检查：等 Postgres ready 再起主 job（否则 prisma migrate 会失败）
+        options: >-
+          --health-cmd "pg_isready -U health_helper -d health_helper_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://health_helper:health_helper@localhost:5432/health_helper_test?schema=public
+      JWT_ACCESS_SECRET: ci-test-access-secret-must-be-long-enough
+      JWT_REFRESH_SECRET: ci-test-refresh-secret-must-be-long-enough
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 7d
+      BCRYPT_ROUNDS: 4
+      CORS_ORIGINS: ''
+      LOG_LEVEL: error
+      # CI 环境显式禁用 AI provider（避免任何上游网络调用）
+      ANTHROPIC_API_KEY: ''
+      OPENAI_API_KEY: ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed test data
+        run: npm run db:seed
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test -- --runInBand --ci
+        # --ci: 强制 Jest 在 CI 模式（无 watch、stdout 干净）
+        # --runInBand: 串行跑（避免 SQLite-style 内存 mock 竞态；Postgres 测试也受益）
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload coverage
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
