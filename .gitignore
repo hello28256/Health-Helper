@@ -50,7 +50,6 @@ build/
 # ============ 测试 / 日志 ============
 logs/
 *.log
-.DS_Store
 Thumbs.db
 
 # ============ 操作系统临时文件 ============
@@ -61,6 +60,7 @@ Thumbs.db
 .Trashes
 ehthumbs.db
 Desktop.ini
+src/.DS_Store
 
 # ============ Docker（按需保留） ============
 # 如果你希望把 docker/ 也纳入版本管理，移除下面两行
