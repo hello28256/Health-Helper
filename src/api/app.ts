@@ -9,6 +9,7 @@ import { logger } from '../utils/logger';
 import { AppError } from '../utils/errors';
 import { buildAuthRouter } from './auth';
 import { buildUsersRouter } from './users';
+import { buildExercisesRouter } from './exercises';
 
 export function createApp(): Application {
   const app = express();
@@ -55,6 +56,7 @@ export function createApp(): Application {
   // ===== 业务路由 =====
   app.use('/api/auth', buildAuthRouter());
   app.use('/api/users', buildUsersRouter());
+  app.use('/api/exercises', buildExercisesRouter());
 
   // ===== 404 =====
   app.use((req: Request, res: Response) => {
