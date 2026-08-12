@@ -11,6 +11,8 @@ import { buildAuthRouter } from './auth';
 import { buildUsersRouter } from './users';
 import { buildExercisesRouter } from './exercises';
 import { buildDietRouter } from './diet';
+import { buildMoodRouter } from './mood';
+import { buildChatRouter } from './chat';
 
 export function createApp(): Application {
   const app = express();
@@ -59,6 +61,8 @@ export function createApp(): Application {
   app.use('/api/users', buildUsersRouter());
   app.use('/api/exercises', buildExercisesRouter());
   app.use('/api/diet', buildDietRouter());
+  app.use('/api/mood', buildMoodRouter());
+  app.use('/api/chat', buildChatRouter());
 
   // ===== 404 =====
   app.use((req: Request, res: Response) => {
