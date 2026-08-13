@@ -1,0 +1,72 @@
+name: health_helper
+description: "Health Helper mobile (iOS + Android) — 对接 Node.js/Postgres 后端。"
+publish_to: 'none'
+version: 0.1.0+1
+
+# 锁版本策略：与 plan 同步（Flutter ≥3.44 / Dart ≥3.10 实测 3.12.2）
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # ===== 网络 =====
+  # dio 5.11: HTTP client + interceptor；401 refresh 单例锁走 QueuedInterceptorsWrapper
+  dio: ^5.7.0
+  # dio_smart_retry: 网络抖动自动重试（指数退避）
+  dio_smart_retry: ^7.0.1
+
+  # ===== 状态 / 路由 =====
+  # Riverpod 2.6.x：AsyncNotifier + sealed AuthState（3.x 主包已含 hooks 集成，无需 flutter_hooks_riverpod）
+  flutter_riverpod: ^2.6.1
+  flutter_hooks: ^0.21.3
+  # go_router 14.x：声明式路由 + redirect
+  go_router: ^14.6.2
+
+  # ===== 存储 =====
+  # flutter_secure_storage：JWT 加密存储（keychain / keystore）
+  flutter_secure_storage: ^9.2.4
+  # shared_preferences：deviceId / 偏好（无需加密）
+  shared_preferences: ^2.3.5
+  uuid: ^4.5.1
+
+  # ===== 健康数据 =====
+  # health 13.x：统一 HealthKit (iOS) + Health Connect (Android) 接口
+  health: ^13.3.1
+
+  # ===== 推送 =====
+  # firebase_core / firebase_messaging：FCM 注册 + token rotation 监听
+  firebase_core: ^3.13.0
+  firebase_messaging: ^15.2.4
+  # flutter_local_notifications：前台/后台消息本地化展示
+  flutter_local_notifications: ^18.0.1
+
+  # ===== 图表 / 工具 =====
+  fl_chart: ^0.69.0
+  intl: ^0.20.0
+  meta: ^1.16.0
+
+  # ===== 本地依赖：openapi_generator_cli 生成的 API 客户端 =====
+  # 跑 `bash scripts/codegen.sh` 后由 lib/api/generated/ 提供（子包形式）
+  health_helper_api:
+    path: lib/api/generated
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # mocktail 1.x：无 codegen 的 mock 库
+  mocktail: ^1.0.4
+  build_runner: ^2.4.13
+  # openapi_generator_cli：后端 OpenAPI → Dart
+  openapi_generator_cli: ^7.0.0
+
+flutter:
+  uses-material-design: true
+  generate: true
