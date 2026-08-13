@@ -187,3 +187,161 @@ describe('Integration: cross-endpoint consistency', () => {
     expect(tokenIos).toBeDefined();
   }, 20000);
 });
+
+describe('Integration: /api/health (HealthKit / Health Connect upload)', () => {
+  it('uploads a batch, lists by metric+range, fetches latest', async () => {
+    const { token } = await registerAndLogin();
+    const auth = { Authorization: `Bearer ${token}` };
+
+    // 批量上报：心率 + 睡眠 + 体重
+    const upload = await request(app)
+      .post('/api/health/records')
+      .set(auth)
+      .send({
+        records: [
+          {
+            metric: 'heart_rate',
+            value: 72,
+            unit: 'bpm',
+            startAt: '2026-08-10T08:00:00Z',
+            source: 'ios_healthkit',
+          },
+          {
+            metric: 'heart_rate',
+            value: 80,
+            unit: 'bpm',
+            startAt: '2026-08-10T18:00:00Z',
+            source: 'ios_healthkit',
+          },
+          {
+            metric: 'sleep',
+            value: 420,
+            unit: 'min',
+            startAt: '2026-08-10T22:00:00Z',
+            endAt: '2026-08-11T05:00:00Z',
+            source: 'ios_healthkit',
+          },
+          {
+            metric: 'weight',
+            value: 64.8,
+            unit: 'kg',
+            startAt: '2026-08-11T08:00:00Z',
+            source: 'manual',
+          },
+        ],
+      });
+    expect(upload.status).toBe(201);
+    expect(upload.body.records).toHaveLength(4);
+
+    // 按 metric + 时间窗查询
+    const list = await request(app)
+      .get('/api/health/records?metric=heart_rate&from=2026-08-10T00:00:00Z&to=2026-08-10T23:59:59Z')
+      .set(auth);
+    expect(list.status).toBe(200);
+    expect(list.body.records).toHaveLength(2);
+
+    // 最新一条
+    const latest = await request(app)
+      .get('/api/health/records/latest?metric=weight')
+      .set(auth);
+    expect(latest.status).toBe(200);
+    expect(latest.body.record.value).toBe(64.8);
+  }, 20000);
+
+  it('rejects empty batch with 400', async () => {
+    const { token } = await registerAndLogin();
+    const res = await request(app)
+      .post('/api/health/records')
+      .set({ Authorization: `Bearer ${token}` })
+      .send({ records: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects invalid metric with 400', async () => {
+    const { token } = await registerAndLogin();
+    const res = await request(app)
+      .post('/api/health/records')
+      .set({ Authorization: `Bearer ${token}` })
+      .send({
+        records: [
+          {
+            metric: 'blood_sugar',
+            value: 5,
+            unit: 'mmol/L',
+            startAt: '2026-08-10T08:00:00Z',
+            source: 'manual',
+          },
+        ],
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects unauthenticated request with 401', async () => {
+    const res = await request(app)
+      .post('/api/health/records')
+      .send({ records: [] });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('Integration: /api/devices (push token registration)', () => {
+  it('registers iOS APNs token, then revokes', async () => {
+    const { token } = await registerAndLogin();
+    const auth = { Authorization: `Bearer ${token}` };
+
+    // 注册 iOS 推送 token
+    const upsert = await request(app)
+      .post('/api/devices')
+      .set(auth)
+      .send({
+        deviceId: 'iphone-jest',
+        platform: 'ios',
+        apnsToken: 'apns-jest-token',
+        appVersion: '1.0.0',
+        locale: 'zh-CN',
+      });
+    expect(upsert.status).toBe(200);
+    expect(upsert.body.apnsToken).toBe('apns-jest-token');
+
+    // 重复 upsert 应覆盖（同 userId+deviceId+platform）
+    const reUpsert = await request(app)
+      .post('/api/devices')
+      .set(auth)
+      .send({
+        deviceId: 'iphone-jest',
+        platform: 'ios',
+        apnsToken: 'apns-jest-token-rotated',
+      });
+    expect(reUpsert.status).toBe(200);
+    expect(reUpsert.body.apnsToken).toBe('apns-jest-token-rotated');
+
+    // 撤销
+    const del = await request(app).delete('/api/devices/iphone-jest').set(auth);
+    expect(del.status).toBe(204);
+  }, 20000);
+
+  it('rejects empty token (neither fcm nor apns)', async () => {
+    const { token } = await registerAndLogin();
+    const res = await request(app)
+      .post('/api/devices')
+      .set({ Authorization: `Bearer ${token}` })
+      .send({ deviceId: 'd', platform: 'ios' });
+    expect(res.status).toBe(400);
+  });
+
+  it('revoke is idempotent (second call returns 204)', async () => {
+    const { token } = await registerAndLogin();
+    const auth = { Authorization: `Bearer ${token}` };
+
+    await request(app)
+      .post('/api/devices')
+      .set(auth)
+      .send({ deviceId: 'd1', platform: 'android', fcmToken: 'fcm-1' });
+
+    const first = await request(app).delete('/api/devices/d1').set(auth);
+    expect(first.status).toBe(204);
+    const second = await request(app).delete('/api/devices/d1').set(auth);
+    expect(second.status).toBe(204);
+  }, 20000);
+});

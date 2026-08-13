@@ -31,6 +31,8 @@ model User {
   dietRecords        DietRecord[]
   moodRecords        MoodRecord[]
   chatLogs           ChatLog[]
+  healthRecords      HealthRecord[]
+  deviceTokens       DeviceToken[]
 
   @@map("users")
 }
@@ -173,4 +175,71 @@ model ChatLog {
 
   @@index([userId, createdAt])
   @@map("chat_logs")
+}
+
+// ===========================
+// 健康数据上报（HealthKit / Health Connect）
+// ===========================
+
+enum HealthMetric {
+  steps
+  heart_rate
+  sleep
+  weight
+  blood_pressure
+  blood_glucose
+  spo2
+  body_temperature
+
+  @@map("health_metric")
+}
+
+model HealthRecord {
+  id        String        @id @default(uuid()) @db.Uuid
+  userId    String        @map("user_id") @db.Uuid
+  metric    HealthMetric
+  value     Decimal       @db.Decimal(12, 4)
+  unit      String        @db.VarChar(16)
+  startAt   DateTime      @map("start_at") @db.Timestamptz
+  endAt     DateTime?     @map("end_at") @db.Timestamptz
+  source    String        @db.VarChar(64)
+  raw       Json?
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, metric, startAt])
+  @@map("health_records")
+}
+
+// ===========================
+// 推送 token 注册（APNs / FCM）
+// ===========================
+
+enum DevicePlatform {
+  ios
+  android
+  web
+
+  @@map("device_platform")
+}
+
+model DeviceToken {
+  id         String         @id @default(uuid()) @db.Uuid
+  userId     String         @map("user_id") @db.Uuid
+  deviceId   String         @map("device_id")
+  platform   DevicePlatform
+  fcmToken   String?        @map("fcm_token")
+  apnsToken  String?        @map("apns_token")
+  appVersion String?        @map("app_version") @db.VarChar(32)
+  locale     String?        @db.VarChar(16)
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  lastSeenAt DateTime       @default(now()) @map("last_seen_at") @db.Timestamptz
+  revokedAt  DateTime?      @map("revoked_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId, platform])
+  @@index([userId, revokedAt])
+  @@map("device_tokens")
 }

@@ -5,6 +5,8 @@ import { requireAuth } from './middlewares/auth';
 import { validateBody, validateQuery } from './middlewares/validate';
 import { UnauthorizedError } from '../utils/errors';
 import { createMoodService, VALID_MOODS } from '../services/moodService';
+import { createPushService } from '../services/pushService';
+import { createDeviceService } from '../services/deviceService';
 
 const recordMoodSchema = z.object({
   mood: z.enum(VALID_MOODS as unknown as [string, ...string[]]),
@@ -25,7 +27,10 @@ const trendQuerySchema = z.object({
 
 export function buildMoodRouter(): Router {
   const router = Router();
-  const moodService = createMoodService();
+  const moodService = createMoodService({
+    pushService: createPushService(),
+    deviceService: createDeviceService(),
+  });
 
   router.use(requireAuth);
 

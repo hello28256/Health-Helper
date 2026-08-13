@@ -5,6 +5,8 @@ import { requireAuth } from './middlewares/auth';
 import { validateBody, validateQuery } from './middlewares/validate';
 import { UnauthorizedError } from '../utils/errors';
 import { createExerciseService, createStepService } from '../services/exerciseService';
+import { createPushService } from '../services/pushService';
+import { createDeviceService } from '../services/deviceService';
 
 const createExerciseSchema = z.object({
   typeId: z.string().min(1).max(64),
@@ -28,7 +30,10 @@ const upsertStepSchema = z.object({
 export function buildExercisesRouter(): Router {
   const router = Router();
   const exerciseService = createExerciseService();
-  const stepService = createStepService();
+  const stepService = createStepService({
+    pushService: createPushService(),
+    deviceService: createDeviceService(),
+  });
 
   router.use(requireAuth);
 

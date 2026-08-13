@@ -31,6 +31,8 @@ export const openapiSpec = {
     { name: 'Diet', description: '食物库 + 饮食记录 + 营养汇总' },
     { name: 'Mood', description: '心理健康 · 情绪记录与趋势' },
     { name: 'Chat', description: 'AI 心理对话（带医疗免责声明）' },
+    { name: 'Health', description: '健康数据批量上报（HealthKit / Health Connect 同步）' },
+    { name: 'Devices', description: '推送 token 注册（APNs / FCM）' },
   ],
   components: {
     securitySchemes: {
@@ -216,6 +218,56 @@ export const openapiSpec = {
         properties: {
           userMessage: { $ref: '#/components/schemas/ChatMessage' },
           assistantMessage: { $ref: '#/components/schemas/ChatMessage' },
+        },
+      },
+      // ===== Health =====
+      HealthMetric: {
+        type: 'string',
+        enum: [
+          'steps',
+          'heart_rate',
+          'sleep',
+          'weight',
+          'blood_pressure',
+          'blood_glucose',
+          'spo2',
+          'body_temperature',
+        ],
+      },
+      HealthRecord: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          userId: { type: 'string', format: 'uuid' },
+          metric: { $ref: '#/components/schemas/HealthMetric' },
+          value: { type: 'number', description: 'Decimal 12,4 — 取决于 metric 含义' },
+          unit: { type: 'string', example: 'bpm' },
+          startAt: { type: 'string', format: 'date-time' },
+          endAt: { type: 'string', format: 'date-time', nullable: true, description: '可选：区间测量（睡眠 / 血压）' },
+          source: { type: 'string', example: 'ios_healthkit' },
+          raw: { type: 'object', additionalProperties: true, nullable: true, description: '原始 payload（高血压含 systolic/diastolic）' },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      // ===== Devices =====
+      DevicePlatform: {
+        type: 'string',
+        enum: ['ios', 'android', 'web'],
+      },
+      DeviceToken: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          userId: { type: 'string', format: 'uuid' },
+          deviceId: { type: 'string' },
+          platform: { $ref: '#/components/schemas/DevicePlatform' },
+          fcmToken: { type: 'string', nullable: true, description: 'Android / Web 推送' },
+          apnsToken: { type: 'string', nullable: true, description: 'iOS 推送' },
+          appVersion: { type: 'string', nullable: true },
+          locale: { type: 'string', nullable: true },
+          createdAt: { type: 'string', format: 'date-time' },
+          lastSeenAt: { type: 'string', format: 'date-time' },
+          revokedAt: { type: 'string', format: 'date-time', nullable: true },
         },
       },
     },
@@ -766,6 +818,160 @@ export const openapiSpec = {
               },
             },
           },
+        },
+      },
+    },
+    // ===== Health =====
+    '/api/health/records': {
+      post: {
+        tags: ['Health'],
+        summary: '批量上报健康数据',
+        description:
+          'mobile 端从 HealthKit / Health Connect 同步时批量上报。' +
+          '上限 500 条/请求；steps 走专用 /api/exercises/steps 端点。',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['records'],
+                properties: {
+                  records: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: 500,
+                    items: {
+                      type: 'object',
+                      required: ['metric', 'value', 'unit', 'startAt', 'source'],
+                      properties: {
+                        metric: { $ref: '#/components/schemas/HealthMetric' },
+                        value: { type: 'number' },
+                        unit: { type: 'string', maxLength: 16 },
+                        startAt: { type: 'string', format: 'date-time' },
+                        endAt: { type: 'string', format: 'date-time' },
+                        source: { type: 'string', example: 'ios_healthkit', maxLength: 64 },
+                        raw: { type: 'object', additionalProperties: true },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { records: { type: 'array', items: { $ref: '#/components/schemas/HealthRecord' } } },
+                },
+              },
+            },
+          },
+          '400': { $ref: '#/components/responses/ValidationError' },
+        },
+      },
+      get: {
+        tags: ['Health'],
+        summary: '按 metric + 时间窗查询历史',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'metric', in: 'query', required: true, schema: { $ref: '#/components/schemas/HealthMetric' } },
+          { name: 'from', in: 'query', required: true, schema: { type: 'string', format: 'date-time' } },
+          { name: 'to', in: 'query', required: true, schema: { type: 'string', format: 'date-time' } },
+        ],
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { records: { type: 'array', items: { $ref: '#/components/schemas/HealthRecord' } } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/health/records/latest': {
+      get: {
+        tags: ['Health'],
+        summary: '查询某 metric 的最新一条',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'metric', in: 'query', required: true, schema: { $ref: '#/components/schemas/HealthMetric' } },
+        ],
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { record: { $ref: '#/components/schemas/HealthRecord' } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    // ===== Devices =====
+    '/api/devices': {
+      post: {
+        tags: ['Devices'],
+        summary: '注册/更新推送 token',
+        description:
+          '幂等 upsert：key = (userId, deviceId, platform)。' +
+          'APNs / FCM 换 token 时再调一次即可覆盖。' +
+          'fcmToken 和 apnsToken 至少要传一个。',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['deviceId', 'platform'],
+                properties: {
+                  deviceId: { type: 'string', minLength: 1, maxLength: 128 },
+                  platform: { $ref: '#/components/schemas/DevicePlatform' },
+                  fcmToken: { type: 'string', minLength: 1, maxLength: 256, description: 'Android / Web 推送' },
+                  apnsToken: { type: 'string', minLength: 1, maxLength: 256, description: 'iOS 推送' },
+                  appVersion: { type: 'string', maxLength: 32 },
+                  locale: { type: 'string', maxLength: 16 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'OK',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/DeviceToken' } } },
+          },
+          '400': { $ref: '#/components/responses/ValidationError' },
+        },
+      },
+    },
+    '/api/devices/{deviceId}': {
+      delete: {
+        tags: ['Devices'],
+        summary: '撤销某 device 的所有 token',
+        description: '幂等：找不到时也返回 204，mobile 端 token rotation 时反复调用不报错',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'deviceId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '204': { description: 'No Content' },
         },
       },
     },

@@ -6,6 +6,7 @@
 > - 架构设计：[`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)
 > - API 文档：[`docs/API.md`](./docs/API.md) · 在线 Swagger UI：启动后访问 `http://localhost:3000/api/docs`
 > - 部署指南：[`docs/DEPLOY.md`](./docs/DEPLOY.md)
+> - **Web 前端**：[`web/`](./web/) · React 18 + TS + Vite + Tailwind · 移动/桌面响应式 · 调用本后端 API
 
 ---
 

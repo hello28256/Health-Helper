@@ -1,5 +1,17 @@
 import { prisma } from '../models/prisma';
 import { ValidationError } from '../utils/errors';
+import { logger } from '../utils/logger';
+import type { PushService } from './pushService';
+import type { DeviceService, DeviceTokenDto } from './deviceService';
+
+/**
+ * MoodService 可选依赖：注入 push 钩子用。
+ * 不传则 record() 不触发推送（保持向后兼容，单测里不传也跑得动）。
+ */
+export interface MoodServiceDeps {
+  pushService?: PushService;
+  deviceService?: DeviceService;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PrismaLike = any;
@@ -62,7 +74,14 @@ export interface TrendInput {
  * - trend 按日聚合：avg score + 出现最多的 mood
  */
 export class MoodService {
-  constructor(private readonly prisma: PrismaLike) {}
+  private readonly pushService: PushService | undefined;
+
+  private readonly deviceService: DeviceService | undefined;
+
+  constructor(private readonly prisma: PrismaLike, deps: MoodServiceDeps = {}) {
+    this.pushService = deps.pushService;
+    this.deviceService = deps.deviceService;
+  }
 
   async record(input: RecordMoodInput): Promise<MoodRecordDto> {
     if (!VALID_MOODS.includes(input.mood as Mood)) {
@@ -87,7 +106,31 @@ export class MoodService {
       },
     });
 
+    // push 钩子：fire-and-forget，不能让推送故障影响主流程
+    void this.maybePushMoodTrend(input.userId).catch((err) =>
+      logger.warn('MoodService push hook failed', { error: (err as Error).message }),
+    );
+
     return this.toDto(rec);
+  }
+
+  /**
+   * 计算最近 7 天 mood 平均分，< 4 触发关怀推送。
+   * 没装 push service 或 device service 时直接 no-op。
+   */
+  private async maybePushMoodTrend(userId: string): Promise<void> {
+    if (!this.pushService || !this.deviceService) return;
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000);
+    const records = await this.list({ userId, from: sevenDaysAgo, to: now });
+    const scores = records
+      .map((r) => r.score)
+      .filter((s): s is number => s !== null && s !== undefined);
+    if (scores.length === 0) return;
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    if (avg >= 4) return; // 阈值之上不发
+    const tokens: DeviceTokenDto[] = await this.deviceService.listActive(userId);
+    await this.pushService.notifyMoodTrend({ userId, tokens, avgScore7d: avg });
   }
 
   async list(input: ListMoodInput): Promise<MoodRecordDto[]> {
@@ -181,6 +224,6 @@ function dominantMood(moods: string[]): string {
 
 // ===== Factory =====
 
-export function createMoodService(): MoodService {
-  return new MoodService(prisma);
+export function createMoodService(deps?: MoodServiceDeps): MoodService {
+  return new MoodService(prisma, deps);
 }

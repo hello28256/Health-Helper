@@ -1,6 +1,18 @@
 import { prisma } from '../models/prisma';
 import { NotFoundError, ValidationError } from '../utils/errors';
+import { logger } from '../utils/logger';
 import { calculateCalories, DEFAULT_BODY_WEIGHT_KG } from './calorie';
+import type { PushService } from './pushService';
+import type { DeviceService, DeviceTokenDto } from './deviceService';
+
+/**
+ * ExerciseService / StepService 可选依赖：注入 push 钩子用。
+ * 不传则不触发推送（保持向后兼容）。
+ */
+export interface ServiceDeps {
+  pushService?: PushService;
+  deviceService?: DeviceService;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PrismaLike = any;
@@ -138,9 +150,18 @@ export interface DailyStepDto {
  *
  * 策略：同一天多次上报取最大值（移动端 OS 有时会回退旧数据）。
  * 上报是 upsert，不需要去重。
+ *
+ * push 钩子：单日累计 ≥10000 时触发"步数达标庆祝"。
  */
 export class StepService {
-  constructor(private readonly prisma: PrismaLike) {}
+  private readonly pushService: PushService | undefined;
+
+  private readonly deviceService: DeviceService | undefined;
+
+  constructor(private readonly prisma: PrismaLike, deps: ServiceDeps = {}) {
+    this.pushService = deps.pushService;
+    this.deviceService = deps.deviceService;
+  }
 
   async upsert(input: UpsertStepInput): Promise<DailyStepDto> {
     if (input.steps < 0) {
@@ -168,6 +189,11 @@ export class StepService {
       },
     });
 
+    // push 钩子：fire-and-forget，失败不阻塞主流程
+    void this.maybePushStepGoal(input.userId, Number(row.steps)).catch((err) =>
+      logger.warn('StepService push hook failed', { error: (err as Error).message }),
+    );
+
     return {
       userId: row.userId,
       date: toDateKey(row.date),
@@ -175,6 +201,17 @@ export class StepService {
       source: row.source,
       updatedAt: row.updatedAt,
     };
+  }
+
+  /**
+   * 步数达标钩子：单日累计 ≥10000 时触发推送。
+   * 没装 push service 或 device service 时直接 no-op。
+   */
+  private async maybePushStepGoal(userId: string, steps: number): Promise<void> {
+    if (!this.pushService || !this.deviceService) return;
+    if (steps < 10_000) return;
+    const tokens: DeviceTokenDto[] = await this.deviceService.listActive(userId);
+    await this.pushService.notifyStepGoalHit({ userId, tokens, steps });
   }
 
   async today(userId: string, today: Date = new Date()): Promise<DailyStepDto> {
@@ -215,6 +252,6 @@ export function createExerciseService(): ExerciseService {
   return new ExerciseService(prisma);
 }
 
-export function createStepService(): StepService {
-  return new StepService(prisma);
+export function createStepService(deps?: ServiceDeps): StepService {
+  return new StepService(prisma, deps);
 }

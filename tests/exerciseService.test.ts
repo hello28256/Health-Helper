@@ -1,6 +1,8 @@
 // ExerciseService + StepService 单元测试
 
 import { ExerciseService, StepService } from '../src/services/exerciseService';
+import type { PushService } from '../src/services/pushService';
+import type { DeviceService } from '../src/services/deviceService';
 import { calculateCalories } from '../src/services/calorie';
 import { NotFoundError } from '../src/utils/errors';
 
@@ -297,4 +299,66 @@ describe('StepService.today', () => {
 // 避免 calculateCalories 未使用告警
 it('sanity: calculateCalories sanity', () => {
   expect(calculateCalories({ met: 1, weightKg: 100, durationSec: 3600 })).toBe(100);
+});
+
+// ===== StepService push 钩子 =====
+
+describe('StepService.upsert (push hook)', () => {
+  it('triggers push when steps >= 10000', async () => {
+    const prisma = createPrismaMock();
+    seedUser(prisma, 'u1');
+    const push = { notifyStepGoalHit: jest.fn().mockResolvedValue(undefined) } as unknown as PushService;
+    const device = { listActive: jest.fn().mockResolvedValue([]) } as unknown as DeviceService;
+    const svc = new StepService(prisma as any, { pushService: push, deviceService: device });
+
+    await svc.upsert({
+      userId: 'u1',
+      date: new Date('2026-08-12T00:00:00Z'),
+      steps: 12000,
+      source: 'ios_pedometer',
+    });
+
+    await new Promise((r) => setImmediate(r));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(push.notifyStepGoalHit).toHaveBeenCalledTimes(1);
+    const args = (push.notifyStepGoalHit as jest.Mock).mock.calls[0][0];
+    expect(args.userId).toBe('u1');
+    expect(args.steps).toBe(12000);
+    expect(args.tokens).toEqual([]);
+  });
+
+  it('does not push when steps < 10000', async () => {
+    const prisma = createPrismaMock();
+    seedUser(prisma, 'u1');
+    const push = { notifyStepGoalHit: jest.fn() } as unknown as PushService;
+    const device = { listActive: jest.fn().mockResolvedValue([]) } as unknown as DeviceService;
+    const svc = new StepService(prisma as any, { pushService: push, deviceService: device });
+
+    await svc.upsert({
+      userId: 'u1',
+      date: new Date('2026-08-12T00:00:00Z'),
+      steps: 8000,
+      source: 'ios_pedometer',
+    });
+
+    await new Promise((r) => setImmediate(r));
+    expect(push.notifyStepGoalHit).not.toHaveBeenCalled();
+  });
+
+  it('works without push service (backward compatible)', async () => {
+    const prisma = createPrismaMock();
+    seedUser(prisma, 'u1');
+    const svc = new StepService(prisma as any); // 不传 push
+
+    const row = await svc.upsert({
+      userId: 'u1',
+      date: new Date('2026-08-12T00:00:00Z'),
+      steps: 12000,
+      source: 'ios_pedometer',
+    });
+
+    expect(row.steps).toBe(12000);
+  });
 });

@@ -14,6 +14,8 @@ import { buildDietRouter } from './diet';
 import { buildMoodRouter } from './mood';
 import { buildChatRouter } from './chat';
 import { buildDocsRouter } from './docs';
+import { buildHealthRouter } from './health';
+import { buildDevicesRouter } from './devices';
 
 export function createApp(): Application {
   const app = express();
@@ -59,7 +61,7 @@ export function createApp(): Application {
     res.json({
       name: 'health-helper-api',
       version: '0.1.0',
-      endpoints: ['/api/auth', '/api/users', '/api/exercises', '/api/steps', '/api/diet', '/api/mood', '/api/chat'],
+      endpoints: ['/api/auth', '/api/users', '/api/exercises', '/api/steps', '/api/diet', '/api/mood', '/api/chat', '/api/health', '/api/devices'],
     });
   });
 
@@ -70,6 +72,8 @@ export function createApp(): Application {
   app.use('/api/diet', buildDietRouter());
   app.use('/api/mood', buildMoodRouter());
   app.use('/api/chat', buildChatRouter());
+  app.use('/api/health', buildHealthRouter());
+  app.use('/api/devices', buildDevicesRouter());
   app.use('/api/docs', buildDocsRouter());
 
   // ===== 404 =====

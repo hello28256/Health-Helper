@@ -2,6 +2,8 @@
 
 import { MoodService, VALID_MOODS } from '../src/services/moodService';
 import { ValidationError } from '../src/utils/errors';
+import type { PushService } from '../src/services/pushService';
+import type { DeviceService } from '../src/services/deviceService';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createPrismaMock() {
@@ -195,5 +197,101 @@ describe('MoodService.trend', () => {
     expect(trend[0].avgScore).toBeNull();
     expect(trend[0].recordCount).toBe(1);
     expect(trend[0].dominantMood).toBe('happy');
+  });
+});
+
+// ===== push 钩子测试 =====
+
+describe('MoodService.record (push hook)', () => {
+  it('triggers pushService.notifyMoodTrend when 7-day avg score < 4', async () => {
+    const prisma = createPrismaMock();
+    // 提前插入 6 条低分记录，让 record() 后第 7 天均分变 3.5
+    const yesterday = new Date();
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    for (let i = 0; i < 6; i++) {
+      await prisma.moodRecord.create({
+        data: {
+          id: `seed_${i}`,
+          userId: 'u1',
+          mood: 'sad',
+          score: 3,
+          note: null,
+          recordedAt: new Date(yesterday.getTime() - i * 86_400_000),
+        },
+      });
+    }
+
+    const push = {
+      notifyMoodTrend: jest.fn().mockResolvedValue(undefined),
+      shutdown: jest.fn(),
+    } as unknown as PushService;
+    const device = {
+      listActive: jest.fn().mockResolvedValue([]),
+    } as unknown as DeviceService;
+
+    const svc = new MoodService(prisma as any, { pushService: push, deviceService: device });
+
+    await svc.record({
+      userId: 'u1',
+      mood: 'sad',
+      score: 4,
+      recordedAt: new Date(),
+    });
+
+    // push 钩子是 fire-and-forget，等一拍让微任务执行
+    await new Promise((resolve) => setImmediate(resolve));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(push.notifyMoodTrend).toHaveBeenCalledTimes(1);
+    const args = (push.notifyMoodTrend as jest.Mock).mock.calls[0][0];
+    expect(args.userId).toBe('u1');
+    expect(args.tokens).toEqual([]);
+    expect(args.avgScore7d).toBeLessThan(4);
+  });
+
+  it('does not push when 7-day avg score >= 4', async () => {
+    const prisma = createPrismaMock();
+    const yesterday = new Date();
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    for (let i = 0; i < 6; i++) {
+      await prisma.moodRecord.create({
+        data: {
+          id: `seed_${i}`,
+          userId: 'u1',
+          mood: 'happy',
+          score: 7,
+          note: null,
+          recordedAt: new Date(yesterday.getTime() - i * 86_400_000),
+        },
+      });
+    }
+
+    const push = { notifyMoodTrend: jest.fn() } as unknown as PushService;
+    const device = { listActive: jest.fn().mockResolvedValue([]) } as unknown as DeviceService;
+    const svc = new MoodService(prisma as any, { pushService: push, deviceService: device });
+
+    await svc.record({
+      userId: 'u1',
+      mood: 'happy',
+      score: 8,
+      recordedAt: new Date(),
+    });
+
+    expect(push.notifyMoodTrend).not.toHaveBeenCalled();
+  });
+
+  it('works without push service (backward compatible)', async () => {
+    const prisma = createPrismaMock();
+    const svc = new MoodService(prisma as any); // 不传 push
+
+    const rec = await svc.record({
+      userId: 'u1',
+      mood: 'sad',
+      score: 2,
+      recordedAt: new Date(),
+    });
+
+    expect(rec.mood).toBe('sad');
   });
 });
