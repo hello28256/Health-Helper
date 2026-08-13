@@ -1,6 +1,6 @@
 # Health-Helper 架构设计文档
 
-> 版本：v0.1 · 最后更新：2026-08-12
+> 版本：v0.2 · 最后更新：2026-08-13
 
 ---
 
@@ -318,3 +318,100 @@ docker-compose.yml
 4. **部署平台**：Vercel / Railway / 自建 VPS？影响 Dockerfile 设计。
 
 确认后我会按 Roadmap 阶段 0 → 1 → ... 推进，每个阶段产出可运行的代码 + 测试。
+
+---
+
+## 12. Mobile 端架构（Flutter · v0.1 已上线）
+
+### 12.1 模块分层
+
+```
+UI (Pages + Widgets)
+    │
+    ▼
+Providers (Riverpod 2.6)  ←  业务逻辑 + 异步编排
+    │
+    ▼
+Services (Health / FCM / Push)  ←  平台抽象 + 副作用
+    │
+    ▼
+API Clients (dio + generated)  ←  HTTP 通讯
+    │
+    ▼
+Backend (Node.js + Postgres)
+```
+
+**关键设计**：
+- **Providers 是唯一调用 API / Service 的层**：UI 只 watch provider，不直接持 dio
+- **Service 抽象 + DI**：HealthPlatform / FCMPlatform 接口与实现分离，单测不需要真机权限
+- **generated API 一致性**：与 web 端共享 `/api/docs/openapi.json`，避免后端 schema 漂移
+
+### 12.2 dio 401 refresh 单例锁
+
+并发 401 只触发一次 refresh：
+
+```dart
+// lib/api/dio_client.dart
+Completer<void>? _refreshInFlight;
+```
+
+所有 401 失败的请求 await 同一个 Completer，refresh 完成后重放。
+**避免**：轮询 `bool isRefreshing`、多次 refresh 导致 token 覆盖。
+
+### 12.3 健康数据上报链路
+
+```
+HealthKit / Health Connect (native)
+    ↓  package:health (统一接口)
+HealthPlatform (abstract)
+    ↓  HealthSync.syncMetric()
+Backend POST /api/exercises/steps | /api/health/records
+    ↓
+Prisma → Postgres
+```
+
+- **HealthPlatform** 抽象让 `HealthSync` 单测不需要真机
+- **步数走 `/api/exercises/steps` 用 max-value 策略**（与 web 一致）
+- **心率/睡眠/血压走 `/api/health/records`**
+
+### 12.4 推送链路
+
+```
+Backend mood / exercise service 触发 pushService.sendToUser()
+    ↓
+APNs / FCM
+    ↓
+iOS / Android device
+    ↓  onMessage (foreground) → flutter_local_notifications
+    ↓  background → system tray
+```
+
+- **token 注册**：登录成功 → `push.register()`（幂等：相同 token 跳过）
+- **token 撤销**：登出 → `push.revoke()`（DELETE `/api/devices/{deviceId}`）
+
+### 12.5 测试金字塔
+
+```
+        /\
+       /  \      integration_test (1 个 E2E 冒烟)
+      /────\
+     /      \    widget_test (10 个页面 × 6 测试)
+    /────────\
+   /          \  unit_test (dio/auth/api/providers/services × 100+)
+  /────────────\
+```
+
+- **单测 + widget 测试 154 个用例**，CI 必跑
+- **integration_test** 需要真后端 + 真机/模拟器，本地手工跑
+
+---
+
+## 13. 已知风险与决策记录
+
+| # | 决策 | 日期 | 理由 |
+|---|------|------|------|
+| D1 | 移动端技术栈选 Flutter 而非 React Native | 2026-07-30 | `health` 包统一 HealthKit + Health Connect；Dart 强类型对 OpenAPI codegen 更友好 |
+| D2 | 步数走 `/api/exercises/steps`，其余指标走 `/api/health/records` | 2026-08-05 | 步数有 max-value 策略且关联 calorie；其他指标通用 healthRecord |
+| D3 | FCM token 幂等：相同 token 跳过上报 | 2026-08-08 | 减少后端写盘压力 |
+| D4 | APNs 用 .p8 token-based 而非 .p12 cert | 2026-08-10 | 1 年免 renewal；多台开发机可共用 |
+| D5 | integration_test 用真实 backend 而非 mock | 2026-08-13 | 端到端真实场景；mock 集成测试容易与真实行为脱节 |

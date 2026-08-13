@@ -37,9 +37,17 @@ class _FakeAuthNotifier extends AuthNotifier {
   Future<AuthState> build() async => const Unauthenticated();
 }
 
+class _NoopFCMPlatform implements FCMPlatform {
+  @override
+  Future<String?> getToken() async => null;
+  @override
+  Future<void> requestPermission() async {}
+  @override
+  Stream<String> get onTokenRefresh => const Stream.empty();
+  @override
+  Stream<FCMMessage> get onMessage => const Stream.empty();
+}
+
 class _NoopFCM extends FCMService {
-  @override
-  Future<void> init() async {}
-  @override
-  Future<String?> fetchToken() async => null;
+  _NoopFCM() : super(platform: _NoopFCMPlatform());
 }
