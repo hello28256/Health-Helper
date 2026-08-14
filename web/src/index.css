@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* iOS 触摸反馈关闭 */
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  /* 卡片基础 */
+  .card {
+    @apply rounded-2xl bg-white p-4 shadow-sm border border-slate-100;
+  }
+  /* 输入框 */
+  .input {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5
+      text-sm placeholder:text-slate-400
+      focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  /* 按钮主色 */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl
+      bg-brand-600 px-4 py-2.5 text-sm font-medium text-white
+      hover:bg-brand-700 active:bg-brand-700
+      disabled:opacity-50 disabled:cursor-not-allowed
+      transition-colors;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl
+      px-4 py-2.5 text-sm font-medium text-slate-700
+      hover:bg-slate-100 active:bg-slate-200
+      disabled:opacity-50 disabled:cursor-not-allowed
+      transition-colors;
+  }
+}
+
+/* 隐藏 Recharts 一些默认视觉 */
+.recharts-cartesian-axis-tick-value {
+  font-size: 11px;
+  fill: #64748b;
+}
